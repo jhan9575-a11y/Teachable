@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>AI 손모양 투표기</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+<style>
+    body {
+        margin: 0;
+        height: 100vh;
+        background: #111827;
+        font-family: "Noto Sans KR", sans-serif;
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .app {
+        width: 360px;
+        background: rgba(255,255,255,0.06);
+        border-radius: 20px;
+        padding: 24px;
+        text-align: center;
+    }
+    button {
+        width: 100%;
+        padding: 12px;
+        border-radius: 12px;
+        border: none;
+        font-size: 16px;
+        font-weight: bold;
+        background: #22c55e;
+        cursor: pointer;
+        margin-bottom: 16px;
+    }
+    #countdown {
+        font-size: 28px;
+        font-weight: bold;
+        margin: 12px 0;
+    }
+    #result {
+        font-size: 18px;
+        margin-top: 12px;
+        font-weight: bold;
+    }
+    canvas {
+        border-radius: 12px;
+        margin-top: 12px;
+    }
+</style>
+</head>
+
+<body>
+<div class="app">
+    <h2>✋ AI 손모양 투표</h2>
+    <button id="startBtn">투표 시작</button>
+    <div id="countdown">대기 중</div>
+    <div id="webcam-container"></div>
+    <div id="result"></div>
+</div>
+
+<script>
+    const URL = "https://teachablemachine.withgoogle.com/models/MwCpK1SOk/";
+
+    let model, webcam;
+    let voteActive = false;
+    let initialized = false;
+    let voteCounts = { 찬성: 0, 반대: 0, 보류: 0 };
+
+    document.getElementById("startBtn").onclick = init;
+
+    async function init() {
+        if (initialized) return; // 중복 실행 방지
+        initialized = true;
+
+        const modelURL = URL + "model.json";
+        const metadataURL = URL + "metadata.json";
+
+        model = await tmImage.load(modelURL, metadataURL);
+
+        webcam = new tmImage.Webcam(220, 220, true);
+        await webcam.setup({ facingMode: "user" });
+        await webcam.play();
+
+        document.getElementById("webcam-container").appendChild(webcam.canvas);
+
+        window.requestAnimationFrame(loop);
+        startCountdown();
+    }
+
+    function startCountdown() {
+        voteCounts = { 찬성: 0, 반대: 0, 보류: 0 };
+        voteActive = false;
+
+        let time = 2;
+        document.getElementById("result").innerText = "";
+        document.getElementById("countdown").innerText = time;
+
+        const timer = setInterval(() => {
+            time--;
+            if (time > 0) {
+                document.getElementById("countdown").innerText = time;
+            } else {
+                clearInterval(timer);
+                document.getElementById("countdown").innerText = "투표 중";
+                voteActive = true;
+                setTimeout(endVote, 2000);
+            }
+        }, 1000);
+    }
+
+    async function loop() {
+        webcam.update();
+        if (voteActive) await predict();
+        window.requestAnimationFrame(loop);
+    }
+
+    async function predict() {
+        const prediction = await model.predict(webcam.canvas);
+        prediction.forEach(p => {
+            if (p.probability > 0.85 && voteCounts[p.className] !== undefined) {
+                voteCounts[p.className]++;
+            }
+        });
+    }
+
+    function endVote() {
+        voteActive = false;
+
+        const result = Object.keys(voteCounts)
+            .reduce((a, b) => voteCounts[a] > voteCounts[b] ? a : b);
+
+        document.getElementById("result").innerText =
+            "투표 결과 : " + result;
+
+        setTimeout(startCountdown, 2000);
+    }
+</script>
+</body>
+</html>
